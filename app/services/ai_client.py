@@ -5,7 +5,7 @@ import json
 
 
 class AIClient:
-	def __init__(self):
+	def __init__(self):  
 		self.client = openai.OpenAI(
 			# api_key=os.getenv("OPENAI_API_KEY", "your-secret-key")
 		)
