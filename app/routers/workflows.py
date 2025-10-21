@@ -129,14 +129,17 @@ async def cursor_prompt(workflow_id: int, request: Request):
     return StreamingResponse(iter_response(), media_type="text/plain")
 
 
-# @router.get("/get_workflow/{workflow_id}")
-# def get_workflow(workflow_id: int = Path(...)):
-#     nodes = get_workflow_nodes(workflow_id)
-# 	print(nodes,"nodes")
-#     return {"nodes": nodes}   
-
 @router.get("/get_workflow/{workflow_id}")
-def get_workflow_edges(workflow_id: int = Path(...)):
-    nodes = get_workflow_edges(workflow_id)
-    print(nodes,"nodes")
-    return {"nodes": nodes}    
+def get_workflow(workflow_id: int = Path(...)):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nodes , edges FROM workflows WHERE id=?", (workflow_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row[0]:
+        return {"nodes": [] }
+
+    nodes = json.loads(row[0])
+    edges = json.loads(row[1])
+    return {"nodes": nodes , "edges": edges}    
