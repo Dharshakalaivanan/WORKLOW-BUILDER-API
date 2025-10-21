@@ -7,7 +7,7 @@ import json
 class AIClient:
 	def __init__(self):
 		self.client = openai.OpenAI(
-			api_key=os.getenv("OPENAI_API_KEY", "your-openai-api-key-here")
+			api_key=os.getenv("OPENAI_API_KEY", "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")
 		)
 
 	async def generate(self, prompt: str, context: Dict[str, Any] | None = None) -> str:
