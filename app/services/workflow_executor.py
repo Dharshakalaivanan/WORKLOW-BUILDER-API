@@ -55,8 +55,10 @@ class WorkflowExecutor:
 		}
 
 		if node_type == "Conversation":
+			first_message = node_data.get("firstMessage", "")
 			prompt = node_data.get("prompt", "")
-			result["message"] = f"Conversation node: {prompt}"
+			result["message"] = f"Starting conversation with: {first_message}"
+			result["data"]["first_message"] = first_message
 			result["data"]["prompt"] = prompt
 			result["data"]["user_input"] = user_input
 
