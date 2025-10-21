@@ -5,6 +5,8 @@ from ..database import get_db
 from ..models import Workflow
 from ..services.ai_client import AIClient
 from ..services.workflow_executor import WorkflowExecutor
+import asyncio
+
 
 router = APIRouter(tags=["assistant"])
 
@@ -73,6 +75,7 @@ async def assistant_socket(ws: WebSocket, workflow_id: int | None = None, db: Se
 
 @router.post("/assistant/execute-workflow/{workflow_id}")
 async def execute_workflow(workflow_id: int, db: Session = Depends(get_db)):
+
 	"""Execute a workflow programmatically"""
 	wf = db.query(Workflow).get(workflow_id)
 	if not wf:
@@ -97,3 +100,14 @@ async def execute_workflow(workflow_id: int, db: Session = Depends(get_db)):
 		"execution_log": execution_log,
 		"status": "completed"
 	}
+
+@router.websocket("/cursor_prompt")
+async def cursor_prompt(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        msg = await websocket.receive_text()
+        # Simulate cursor typing (streamed response)
+        for word in ["Typing", "your", "response", "now..."]:
+            await websocket.send_text(word)
+            await asyncio.sleep(0.5)
+        await websocket.send_text(f"Echo: {msg}")
