@@ -1,6 +1,8 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import json
+import asyncio
 from ..database import get_db
 from ..models import Workflow
 from ..services.ai_client import AIClient
@@ -46,17 +48,31 @@ async def assistant_socket(ws: WebSocket, workflow_id: int | None = None, db: Se
 			# Generate AI response
 			response = await ai.generate(user_prompt, context)
 			
-			# If executor exists and user wants to execute workflow
-			if executor and ("execute" in user_prompt.lower() or "run" in user_prompt.lower()):
-				execution_result = executor.execute_current_node(user_prompt)
-				response += f"\n\nWorkflow Execution:\n{execution_result['message']}"
+		# If executor exists and user wants to execute workflow
+		if executor and ("execute" in user_prompt.lower() or "run" in user_prompt.lower()):
+			execution_result = executor.execute_current_node(user_prompt)
+			
+			# Handle Conversation nodes with firstMessage
+			if execution_result.get("node_type") == "Conversation":
+				first_message = execution_result.get("data", {}).get("first_message", "")
+				prompt = execution_result.get("data", {}).get("prompt", "")
 				
-				# Move to next node
-				next_node_id = executor.move_to_next_node()
-				if next_node_id:
-					response += f"\n\nMoving to next node: {next_node_id}"
-				else:
-					response += "\n\nWorkflow execution completed."
+				if first_message:
+					response += f"\n\n🎯 Starting Call:\n\"{first_message}\"\n\n"
+				
+				if prompt:
+					response += f"📋 Assistant Behavior:\n{prompt}\n\n"
+				
+				response += "✅ Call started. The AI will speak the first message, then listen for user responses and follow the behavior instructions."
+			else:
+				response += f"\n\nWorkflow Execution:\n{execution_result['message']}"
+
+			# Move to next node
+			next_node_id = executor.move_to_next_node()
+			if next_node_id:
+				response += f"\n\nMoving to next node: {next_node_id}"
+			else:
+				response += "\n\nWorkflow execution completed."
 			
 			await ws.send_json({
 				"type": "response",
@@ -101,13 +117,47 @@ async def execute_workflow(workflow_id: int, db: Session = Depends(get_db)):
 		"status": "completed"
 	}
 
-@router.websocket("/cursor_prompt")
-async def cursor_prompt(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        msg = await websocket.receive_text()
-        # Simulate cursor typing (streamed response)
-        for word in ["Typing", "your", "response", "now..."]:
-            await websocket.send_text(word)
-            await asyncio.sleep(0.5)
-        await websocket.send_text(f"Echo: {msg}")
+@router.post("/cursor_prompt/{workflow_id}")
+async def cursor_prompt_stream(workflow_id: int, request: dict, db: Session = Depends(get_db)):
+	"""Streaming endpoint for cursor-style prompts"""
+	message = request.get("message", "")
+	
+	ai = AIClient()
+	executor = None
+	
+	wf = db.query(Workflow).get(workflow_id)
+	if wf:
+		nodes = json.loads(wf.nodes)
+		edges = json.loads(wf.edges)
+		executor = WorkflowExecutor(nodes=nodes, edges=edges)
+	
+	async def generate_stream():
+		try:
+			# Build context for AI
+			context = {
+				"workflowLoaded": executor is not None,
+				"executorStatus": executor.get_execution_status() if executor else None,
+				"workflowData": {
+					"nodes": nodes,
+					"edges": edges
+				} if executor else None
+			}
+			
+			# Generate AI response
+			response = await ai.generate(message, context)
+			
+			# Stream the response word by word for typing effect
+			words = response.split()
+			for i, word in enumerate(words):
+				chunk = word + (" " if i < len(words) - 1 else "")
+				yield chunk
+				await asyncio.sleep(0.05)  # Small delay for typing effect
+				
+		except Exception as e:
+			yield f"Error: {str(e)}"
+	
+	return StreamingResponse(
+		generate_stream(),
+		media_type="text/plain",
+		headers={"Cache-Control": "no-cache"}
+	)
