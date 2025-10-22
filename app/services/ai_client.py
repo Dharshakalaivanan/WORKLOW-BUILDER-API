@@ -9,9 +9,9 @@ logger = logging.getLogger(__name__)
 class AIClient:
     def __init__(self):
         self.client = openai.OpenAI(
-            api_key=os.getenv(
-                "OPENAI_API_KEY", "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"
-            )
+            # api_key=os.getenv(
+            #     "OPENAI_API_KEY", "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"
+            # )
         )
 
     async def generate(self, prompt: str, context: Dict[str, Any] | None = None) -> str:
