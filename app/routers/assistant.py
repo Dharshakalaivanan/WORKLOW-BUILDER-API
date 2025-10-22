@@ -6,71 +6,53 @@ from ..models import Workflow
 from ..services.ai_client import AIClient
 from ..services.workflow_executor import WorkflowExecutor
 import asyncio
+import sqlite3
+import json
 
 
 router = APIRouter(tags=["assistant"])
 
 
+ai_client = AIClient()
+
 @router.websocket("/ws/assistant")
-async def assistant_socket(ws: WebSocket, workflow_id: int | None = None, db: Session = Depends(get_db)):
-	await ws.accept()
-	ai = AIClient()
-	executor = None
-	
-	if workflow_id:
-		wf = db.query(Workflow).get(workflow_id)
-		if wf:
-			nodes = json.loads(wf.nodes)
-			edges = json.loads(wf.edges)
-			executor = WorkflowExecutor(nodes=nodes, edges=edges)
-			await ws.send_json({
-				"type": "workflow_loaded",
-				"message": f"Workflow '{wf.name}' loaded with {len(nodes)} nodes and {len(edges)} edges"
-			})
-	
-	try:
-		while True:
-			data = await ws.receive_text()
-			message = json.loads(data) if data.startswith("{") else {"text": data}
-			
-			user_prompt = message.get("text", "")
-			workflow_data = message.get("workflow", {})
-			
-			# Build context for AI
-			context = {
-				"workflowLoaded": executor is not None,
-				"workflowData": workflow_data,
-				"executorStatus": executor.get_execution_status() if executor else None
-			}
-			
-			# Generate AI response
-			response = await ai.generate(user_prompt, context)
-			
-			# If executor exists and user wants to execute workflow
-			if executor and ("execute" in user_prompt.lower() or "run" in user_prompt.lower()):
-				execution_result = executor.execute_current_node(user_prompt)
-				response += f"\n\nWorkflow Execution:\n{execution_result['message']}"
-				
-				# Move to next node
-				next_node_id = executor.move_to_next_node()
-				if next_node_id:
-					response += f"\n\nMoving to next node: {next_node_id}"
-				else:
-					response += "\n\nWorkflow execution completed."
-			
-			await ws.send_json({
-				"type": "response",
-				"reply": response,
-				"executor_status": executor.get_execution_status() if executor else None
-			})
-			
-	except WebSocketDisconnect:
-		return
-	except Exception as e:
-		await ws.send_json({
-			"type": "error",
-			"message": f"Error: {str(e)}"
-		})
+async def assistant_ws(websocket: WebSocket):
+    await websocket.accept()
+    workflow_id = int(websocket.query_params.get("workflow_id", 0))
+    print("Connected to workflow_id:", workflow_id)
+
+    while True:
+        try:
+            data = await websocket.receive_text()
+            payload = json.loads(data)
+            user_message = payload.get("text", "").lower()
+            print("User message:", user_message)
+
+            nodes = get_workflow_nodes(workflow_id)
+            print("Workflow nodes:", nodes)
+
+            reply = "Sorry, I didn't understand that."
+
+            for node in nodes:
+                triggers = node.get("data", {}).get("trigger", [])
+                base_prompt = node.get("data", {}).get("prompt", "")
+                if any(trigger.lower() in user_message for trigger in triggers):
+                    # Generate OpenAI reply using node prompt
+                    prompt = f"""
+                    Node prompt: {base_prompt}
+                    User said: {user_message}
+                    Respond appropriately with context-aware, professional, and relational reply.
+                    """
+                    reply = await ai_client.generate(prompt, context={"workflowLoaded": True})
+                    break
+
+            print("Replying with:", reply)
+            await websocket.send_json({"reply": reply})
+
+        except Exception as e:
+            print("WebSocket error:", e)
+            break
+
 
 
 @router.post("/assistant/execute-workflow/{workflow_id}")
@@ -111,3 +93,39 @@ async def cursor_prompt(websocket: WebSocket):
             await websocket.send_text(word)
             await asyncio.sleep(0.5)
         await websocket.send_text(f"Echo: {msg}")
+
+
+DB_FILE = "workflows.db"
+
+def get_connection():
+    """Return a SQLite connection with row factory as dictionary."""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def get_workflow_nodes(workflow_id: int):
+    """
+    Fetch workflow nodes for a given workflow ID.
+    
+    Returns:
+        List[Dict]: List of nodes with their data and triggers.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT nodes FROM workflows WHERE id=?", (workflow_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row or not row["nodes"]:
+        return []
+    
+    try:
+        nodes = json.loads(row["nodes"])
+        # Ensure each node has 'data' key
+        for node in nodes:
+            if "data" not in node:
+                node["data"] = {}
+        return nodes
+    except json.JSONDecodeError:
+        return []
