@@ -2,17 +2,19 @@ from typing import Dict, Any
 import openai
 import os
 import logging
+from dotenv import load_dotenv 
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 
-class AIClient:
+class AIClient:   
     def __init__(self):
+        print(f"AI_API_KEY: {os.getenv('AI_API_KEY')}", os.getenv("AI_API_KEY"))
         self.client = openai.OpenAI(
-            # api_key=os.getenv(
-            #     "API", ""
-            # )
+            api_key=os.getenv("AI_API_KEY")
         )
+		
 
     async def generate(self, prompt: str, context: Dict[str, Any] | None = None) -> str:
         """

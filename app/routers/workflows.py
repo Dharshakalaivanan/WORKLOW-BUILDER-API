@@ -73,30 +73,30 @@ def get_workflow(workflow_id: int, db: Session = Depends(get_db)):
     return _to_schema(wf)
 
 
-# @router.put("/{workflow_id}", response_model=schemas.WorkflowOut)
-# def update_workflow(workflow_id: int, payload: schemas.WorkflowUpdate, db: Session = Depends(get_db)):
-#     wf = db.query(models.Workflow).get(workflow_id)
-#     if not wf:
-#         raise HTTPException(status_code=404, detail="Workflow not found")
-#     if payload.name is not None:
-#         wf.name = payload.name
-#     if payload.nodes is not None:
-#         wf.nodes = json.dumps(payload.nodes)
-#     if payload.edges is not None:
-#         wf.edges = json.dumps(payload.edges)
-#     db.commit()
-#     db.refresh(wf)
-#     return _to_schema(wf)
+@router.put("/{workflow_id}", response_model=schemas.WorkflowOut)
+def update_workflow(workflow_id: int, payload: schemas.WorkflowUpdate, db: Session = Depends(get_db)):
+    wf = db.query(models.Workflow).get(workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if payload.name is not None:
+        wf.name = payload.name
+    if payload.nodes is not None:
+        wf.nodes = json.dumps(payload.nodes)
+    if payload.edges is not None:
+        wf.edges = json.dumps(payload.edges)
+    db.commit()
+    db.refresh(wf)
+    return _to_schema(wf)
 
 
-# @router.delete("/{workflow_id}")
-# def delete_workflow(workflow_id: int, db: Session = Depends(get_db)):
-#     wf = db.query(models.Workflow).get(workflow_id)
-#     if not wf:
-#         raise HTTPException(status_code=404, detail="Workflow not found")
-#     db.delete(wf)
-#     db.commit()
-#     return {"ok": True}
+@router.delete("/{workflow_id}")
+def delete_workflow(workflow_id: int, db: Session = Depends(get_db)):
+    wf = db.query(models.Workflow).get(workflow_id)
+    if not wf:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    db.delete(wf)
+    db.commit()
+    return {"ok": True}
 
 # ---------------------- Reload Workflow (for UI) ----------------------
 
